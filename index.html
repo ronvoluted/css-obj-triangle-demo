@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CSS OBJ Triangle Demo</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="demo.js"></script>
+  </head>
+  <body>
+    <main class="demo">
+      <h1 class="title">OBJ triangles as CSS 3D planes</h1>
+      <p class="subtitle">
+        Every face is just a 1×1 clipped triangle with a per-face <code>matrix3d()</code>. The cube moves as one object because the
+        parent <code>.mesh</code> gets a single shared transform.
+      </p>
+
+      <div class="scene" id="scene">
+        <div class="mesh" id="mesh"></div>
+      </div>
+
+      <section class="panel">
+        <p class="instructions">Drag to orbit. Mouse wheel to dolly in/out.</p>
+        <p class="hud" id="hud"></p>
+      </section>
+    </main>
+  </body>
+</html>
