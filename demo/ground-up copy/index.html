@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>From the ground up — a CSS cube, one triangle at a time</title>
+    <style>
+      :root {
+        --scene: min(64vmin, 460px);
+        --persp: 800px;
+      }
+
+      * { box-sizing: border-box; }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        color: #e8eef9;
+        background:
+          radial-gradient(circle at 50% -10%, #1a2436 0%, #0e1420 38%, #080b12 78%),
+          #080b12;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9em;
+        color: #cdd9f4;
+      }
+
+      /* ---- intro ---- */
+      .intro {
+        min-height: 70vh;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        padding: 4rem 1.5rem 2rem;
+      }
+      .intro h1 {
+        margin: 0 0 0.6rem;
+        font-size: clamp(1.8rem, 5vw, 3rem);
+        letter-spacing: -0.02em;
+      }
+      .intro p {
+        margin: 0 auto;
+        max-width: 54ch;
+        color: #aab6cf;
+        font-size: clamp(1rem, 2vw, 1.2rem);
+        line-height: 1.6;
+      }
+      .scroll-hint {
+        margin-top: 2.5rem;
+        color: #6f7fa3;
+        font-size: 0.85rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        animation: bob 2s ease-in-out infinite;
+      }
+      @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
+
+      /* ---- step slide ---- */
+      .step {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: minmax(280px, 0.9fr) 1.1fr;
+        align-items: center;
+        gap: clamp(1.5rem, 4vw, 4rem);
+        padding: clamp(2rem, 6vh, 5rem) clamp(1.5rem, 6vw, 6rem);
+        border-top: 1px solid rgba(180, 208, 255, 0.08);
+      }
+      @media (max-width: 880px) {
+        .step { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+      }
+
+      .copy { max-width: 46ch; }
+      .step-num {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.4rem; height: 2.4rem;
+        border-radius: 50%;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: #0b1018;
+        background: linear-gradient(135deg, #7dd3fc, #c084fc);
+        box-shadow: 0 6px 18px rgba(124, 156, 255, 0.35);
+      }
+      .step h2 {
+        margin: 1rem 0 0.6rem;
+        font-size: clamp(1.4rem, 3vw, 2rem);
+        letter-spacing: -0.01em;
+      }
+      .step p {
+        margin: 0 0 1rem;
+        color: #aab6cf;
+        line-height: 1.65;
+      }
+      .step .snippet {
+        display: block;
+        margin-top: 1.2rem;
+        padding: 0.7rem 0.9rem;
+        border-radius: 12px;
+        border: 1px solid rgba(180, 208, 255, 0.14);
+        background: rgba(7, 12, 20, 0.66);
+        white-space: pre-wrap;
+        font-size: 0.82rem;
+        line-height: 1.5;
+        text-align: left;
+      }
+      .snippet .hl { color: #7dd3fc; }
+      .snippet .cm { color: #6f7fa3; }
+
+      /* ---- the scene (matches the project's viewer grid) ---- */
+      .scene {
+        position: relative;
+        width: var(--scene);
+        aspect-ratio: 1;
+        perspective: var(--persp);
+        perspective-origin: 50% 50%;
+        border-radius: 24px;
+        border: 1px solid rgba(180, 208, 255, 0.18);
+        background:
+          radial-gradient(circle at 50% 45%, rgba(105, 165, 255, 0.14), rgba(0, 0, 0, 0) 36%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+        justify-self: center;
+      }
+      /* step 4 turns perspective ON via this flag; step 3 leaves it off */
+      .scene.flat { perspective: none; }
+
+      .scene::before, .scene::after {
+        content: ""; position: absolute; inset: 0; pointer-events: none;
+      }
+      .scene::before {
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px) 50% 50% / 32px 32px,
+          linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px) 50% 50% / 32px 32px;
+        -webkit-mask-image: radial-gradient(circle at center, black 56%, transparent 86%);
+        mask-image: radial-gradient(circle at center, black 56%, transparent 86%);
+      }
+      .scene::after {
+        background:
+          linear-gradient(transparent calc(50% - 0.5px), rgba(140, 172, 230, 0.3) 0, transparent calc(50% + 0.5px)),
+          linear-gradient(90deg, transparent calc(50% - 0.5px), rgba(140, 172, 230, 0.3) 0, transparent calc(50% + 0.5px));
+      }
+
+      .mesh {
+        position: absolute;
+        left: 50%; top: 50%;
+        width: 0; height: 0;
+        transform-style: preserve-3d;
+        transition: transform 0.6s ease;
+      }
+
+      /* a plain div for step 1 */
+      .panel {
+        position: absolute;
+        width: 160px; height: 160px;
+        left: -80px; top: -80px;
+        border-radius: 8px;
+        border: 1px solid rgba(180, 208, 255, 0.5);
+        background: linear-gradient(135deg, rgba(125, 211, 252, 0.25), rgba(192, 132, 252, 0.25));
+        display: grid; place-items: center;
+        font-size: 0.8rem; color: #cdd9f4;
+        backdrop-filter: blur(2px);
+      }
+
+      .triangle {
+        position: absolute;
+        left: 0; top: 0;
+        width: 100px; height: 100px;
+        transform-origin: 0 0 0;
+        backface-visibility: visible; /* double-sided: faces never vanish while teaching */
+      }
+      /* reveal the underlying square box the gradient is painted onto */
+      .triangle.boxed { outline: 1px dashed rgba(180, 208, 255, 0.55); outline-offset: -1px; }
+
+      .spin { animation: spin 14s linear infinite; }
+      @keyframes spin {
+        from { transform: rotateX(-22deg) rotateY(0deg); }
+        to   { transform: rotateX(-22deg) rotateY(360deg); }
+      }
+
+      .outro {
+        min-height: 60vh;
+        display: grid; place-items: center; text-align: center;
+        padding: 3rem 1.5rem 5rem;
+        border-top: 1px solid rgba(180, 208, 255, 0.08);
+      }
+      .outro h2 { font-size: clamp(1.4rem, 3vw, 2rem); margin: 0 0 0.6rem; }
+      .outro p { color: #aab6cf; max-width: 52ch; line-height: 1.6; }
+      .outro a { color: #7dd3fc; }
+    </style>
+  </head>
+  <body>
+    <header class="intro">
+      <div>
+        <h1>A cube, from the ground up</h1>
+        <p>
+          No WebGL. No canvas. No 3D library. Just <code>&lt;div&gt;</code>s, a
+          gradient, and one CSS <code>matrix3d()</code> per triangle. Scroll to
+          build a spinning cube one step at a time.
+        </p>
+        <p class="scroll-hint">scroll ↓</p>
+      </div>
+    </header>
+
+    <!-- 1 -->
+    <section class="step">
+      <div class="copy">
+        <span class="step-num">1</span>
+        <h2>Here's a div</h2>
+        <p>
+          Everything starts here: a single rectangular box. It's flat, it faces
+          us, it knows nothing about 3D. This is the only building block we get.
+        </p>
+        <code class="snippet"><span class="hl">&lt;div</span> class=<span class="cm">"panel"</span><span class="hl">&gt;&lt;/div&gt;</span></code>
+      </div>
+      <div class="scene"><div class="mesh" data-step="div"></div></div>
+    </section>
+
+    <!-- 2 -->
+    <section class="step">
+      <div class="copy">
+        <span class="step-num">2</span>
+        <h2>Make it a triangle</h2>
+        <p>
+          A mesh is made of triangles, so we need our box to <em>be</em> one. We
+          don't change its shape — we paint it. A diagonal gradient fills one
+          half with colour and leaves the other half transparent. The dashed
+          outline shows the div is still a full square underneath.
+        </p>
+        <code class="snippet">background: <span class="cm">/* solid on one half, clear on the other */</span>
+  linear-gradient(<span class="hl">to bottom right</span>, hotpink <span class="hl">50%</span>, transparent <span class="hl">50%</span>);</code>
+      </div>
+      <div class="scene"><div class="mesh" data-step="triangle"></div></div>
+    </section>
+
+    <!-- 3 -->
+    <section class="step">
+      <div class="copy">
+        <span class="step-num">3</span>
+        <h2>Rotate it… nothing happens?</h2>
+        <p>
+          Now we spin the triangle around the vertical axis. It gets
+          <em>narrower</em>, like a closing door seen straight on — but it still
+          looks flat. Without depth, a rotation is just a squish. The grid behind
+          it doesn't bend at all.
+        </p>
+        <code class="snippet">transform: <span class="hl">rotateY(40deg)</span>;
+<span class="cm">/* scene has NO perspective yet → looks 2D */</span></code>
+      </div>
+      <div class="scene flat"><div class="mesh" data-step="rotated"></div></div>
+    </section>
+
+    <!-- 4 -->
+    <section class="step">
+      <div class="copy">
+        <span class="step-num">4</span>
+        <h2>Add perspective</h2>
+        <p>
+          Same rotation, one new line on the <em>parent</em>:
+          <code>perspective</code>. Now the far edge shrinks and the near edge
+          grows, exactly like your eyes do it. The triangle pops off the screen
+          and reads as a plane sitting in real space.
+        </p>
+        <code class="snippet"><span class="cm">/* on the .scene, the camera lens: */</span>
+.scene { <span class="hl">perspective: 800px</span>; }</code>
+      </div>
+      <div class="scene"><div class="mesh" data-step="perspective"></div></div>
+    </section>
+
+    <!-- 5 -->
+    <section class="step">
+      <div class="copy">
+        <span class="step-num">5</span>
+        <h2>Pair them into a square</h2>
+        <p>
+          One triangle is half a square. Add a second, mirrored triangle — its
+          right angle in the opposite corner — and the two tile together into a
+          solid quad. That's one face of our cube.
+        </p>
+        <code class="snippet"><span class="cm">/* two triangles, two matrix3d() transforms */</span>
+.t1 { transform: matrix3d(…) } <span class="cm">/* upper-left */</span>
+.t2 { transform: matrix3d(…) } <span class="cm">/* lower-right */</span></code>
+      </div>
+      <div class="scene"><div class="mesh" data-step="square"></div></div>
+    </section>
+
+    <!-- 6 -->
+    <section class="step">
+      <div class="copy">
+        <span class="step-num">6</span>
+        <h2>Two more for an adjacent side</h2>
+        <p>
+          Two more triangles, placed and angled so they share an edge with the
+          first face, fold away at 90°. Now we have a corner — two of the cube's
+          six faces. Each face is the same recipe with different numbers.
+        </p>
+        <code class="snippet"><span class="cm">/* the parent keeps everything in one space */</span>
+.mesh { <span class="hl">transform-style: preserve-3d</span>; }</code>
+      </div>
+      <div class="scene"><div class="mesh" data-step="twosides"></div></div>
+    </section>
+
+    <!-- 7 -->
+    <section class="step">
+      <div class="copy">
+        <span class="step-num">7</span>
+        <h2>Eight more → a whole cube</h2>
+        <p>
+          Six faces, two triangles each — twelve <code>&lt;div&gt;</code>s in
+          total. Every one carries its own <code>matrix3d()</code> placing it on
+          the right face. Put them all in the same <code>preserve-3d</code>
+          parent and they assemble into a solid object.
+        </p>
+        <code class="snippet"><span class="cm">/* 12 triangles = 6 faces = 1 cube */</span></code>
+      </div>
+      <div class="scene"><div class="mesh" data-step="cube"></div></div>
+    </section>
+
+    <!-- 8 -->
+    <section class="step">
+      <div class="copy">
+        <span class="step-num">8</span>
+        <h2>Spin the whole thing</h2>
+        <p>
+          The magic of <code>preserve-3d</code>: rotate the <em>parent</em> and
+          all twelve triangles move together as one rigid object. One transform
+          on one element animates the entire cube — and the same trick scales to
+          a teapot with thousands of triangles.
+        </p>
+        <code class="snippet">.mesh { <span class="hl">animation: spin 14s linear infinite</span>; }
+<span class="cm">/* a real OBJ mesh is just this, many more times */</span></code>
+      </div>
+      <div class="scene"><div class="mesh spin" data-step="cube"></div></div>
+    </section>
+
+    <footer class="outro">
+      <div>
+        <h2>That's the entire trick.</h2>
+        <p>
+          A div, a gradient, a matrix, and a shared 3D context. See the
+          <a href="maths.html">maths behind it →</a>
+        </p>
+      </div>
+    </footer>
+
+    <script>
+      // ----- minimal 3D maths (same core as the build pipeline) -----
+      const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+      const cross = (a, b) => ({
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x,
+      });
+      const len = (v) => Math.hypot(v.x, v.y, v.z);
+      const fmt = (n) => String(Math.abs(n) < 1e-10 ? 0 : Number(n.toFixed(6)));
+
+      const TRI_BASE = 100;
+
+      // Build the matrix3d() that maps a TRI_BASE×TRI_BASE box onto triangle a,b,c.
+      // Columns: edge A→B, edge A→C, face normal, position of A. (See learnings.md.)
+      function triangleMatrix3d(a, b, c) {
+        const eX = sub(b, a);
+        const eY = sub(c, a);
+        const n = cross(eX, eY);
+        const nl = len(n);
+        if (nl < 1e-6) return null;
+        const un = { x: n.x / nl, y: n.y / nl, z: n.z / nl };
+        const s = 1 / TRI_BASE;
+        const m = [
+          eX.x * s, eX.y * s, eX.z * s, 0,
+          eY.x * s, eY.y * s, eY.z * s, 0,
+          un.x, un.y, un.z, 0,
+          a.x, a.y, a.z, 1,
+        ];
+        return `matrix3d(${m.map(fmt).join(",")})`;
+      }
+
+      function makeTriangle(a, b, c, color, boxed) {
+        const t = triangleMatrix3d(a, b, c);
+        if (!t) return null;
+        const el = document.createElement("div");
+        el.className = "triangle" + (boxed ? " boxed" : "");
+        el.style.transform = t;
+        el.style.background = `linear-gradient(to bottom right, ${color} 50%, transparent 50%)`;
+        return el;
+      }
+
+      // ----- cube geometry (half-size 80). Double-sided, so winding is cosmetic. -----
+      const H = 80;
+      const V = {
+        FBL: { x: -H, y: -H, z:  H }, FBR: { x:  H, y: -H, z:  H },
+        FTR: { x:  H, y:  H, z:  H }, FTL: { x: -H, y:  H, z:  H },
+        BBL: { x: -H, y: -H, z: -H }, BBR: { x:  H, y: -H, z: -H },
+        BTR: { x:  H, y:  H, z: -H }, BTL: { x: -H, y:  H, z: -H },
+      };
+
+      // Split a square (4 corners, in ring order) into two right-isoceles triangles
+      // so the diagonal gradient masks each half correctly.
+      function quad(p0, p1, p2, p3, c1, c2) {
+        return [
+          [p0, p1, p3, c1], // right angle at p0  → upper-left half
+          [p2, p3, p1, c2], // right angle at p2  → lower-right half
+        ];
+      }
+
+      // Ordered so step 5 (square) = faces[0..1], step 6 (+adjacent) = faces[0..3].
+      const FACES = [
+        ...quad(V.FBL, V.FBR, V.FTR, V.FTL, "#ec4899", "#d946ef"), // front  (toward camera)
+        ...quad(V.FBR, V.BBR, V.BTR, V.FTR, "#a855f7", "#8b5cf6"), // right   (adjacent)
+        ...quad(V.BBR, V.BBL, V.BTL, V.BTR, "#f472b6", "#e879f9"), // back
+        ...quad(V.BBL, V.FBL, V.FTL, V.BTL, "#3b82f6", "#6366f1"), // left
+        ...quad(V.FTL, V.FTR, V.BTR, V.BTL, "#22d3ee", "#10b981"), // top
+        ...quad(V.BBL, V.BBR, V.FBR, V.FBL, "#0ea5e9", "#14b8a6"), // bottom
+      ];
+
+      const SINGLE = "#ec4899";
+
+      function render(mesh, step) {
+        mesh.replaceChildren();
+        let transform = "";
+
+        if (step === "div") {
+          const p = document.createElement("div");
+          p.className = "panel";
+          p.textContent = "<div>";
+          mesh.appendChild(p);
+          return;
+        }
+
+        if (step === "triangle") {
+          mesh.appendChild(makeTriangle(V.FBL, V.FBR, V.FTL, SINGLE, true));
+        } else if (step === "rotated" || step === "perspective") {
+          mesh.appendChild(makeTriangle(V.FBL, V.FBR, V.FTL, SINGLE, true));
+          transform = "rotateY(40deg)";
+        } else if (step === "square") {
+          for (const [a, b, c, col] of FACES.slice(0, 2)) mesh.appendChild(makeTriangle(a, b, c, col));
+          transform = "rotateX(-18deg) rotateY(26deg)";
+        } else if (step === "twosides") {
+          for (const [a, b, c, col] of FACES.slice(0, 4)) mesh.appendChild(makeTriangle(a, b, c, col));
+          transform = "rotateX(-18deg) rotateY(34deg)";
+        } else if (step === "cube") {
+          for (const [a, b, c, col] of FACES) mesh.appendChild(makeTriangle(a, b, c, col));
+          // animated meshes get their transform from the .spin keyframes
+          if (!mesh.classList.contains("spin")) transform = "rotateX(-22deg) rotateY(38deg)";
+        }
+
+        if (transform) mesh.style.transform = transform;
+      }
+
+      document.querySelectorAll(".mesh[data-step]").forEach((mesh) => {
+        render(mesh, mesh.dataset.step);
+      });
+    </script>
+  </body>
+</html>

@@ -16,6 +16,7 @@ body {
 body {
   display: grid;
   place-items: center;
+  padding-bottom: 1rem;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   color: #e8eef9;
   background:
@@ -99,13 +100,16 @@ body {
   }
 }
 
-.triangle {
+.mesh > div {
   position: absolute;
   left: 0;
   top: 0;
   width: 1px;
   height: 1px;
   transform-origin: 0 0 0;
+  transform: var(--t);
+  background: linear-gradient(to bottom right, var(--c) 50%, transparent 50%);
+  backface-visibility: hidden;
   will-change: transform;
   pointer-events: none;
 }

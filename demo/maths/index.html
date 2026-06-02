@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The maths behind a CSS cube — for humans</title>
+    <style>
+      :root { --persp: 720px; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        color: #e8eef9;
+        background: radial-gradient(circle at 50% -10%, #1a2436 0%, #0e1420 40%, #080b12 80%), #080b12;
+        line-height: 1.65;
+      }
+      code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      code { color: #cdd9f4; font-size: 0.92em; }
+      a { color: #7dd3fc; }
+
+      header { text-align: center; padding: 4rem 1.5rem 1rem; }
+      header h1 { margin: 0 0 0.5rem; font-size: clamp(1.8rem, 5vw, 2.8rem); letter-spacing: -0.02em; }
+      header p { margin: 0 auto; max-width: 56ch; color: #aab6cf; font-size: clamp(1rem, 2vw, 1.15rem); }
+
+      main { max-width: 1040px; margin: 0 auto; padding: 1rem 1.25rem 5rem; }
+
+      section { margin: 3.5rem 0; }
+      section > h2 {
+        font-size: clamp(1.3rem, 3vw, 1.8rem);
+        letter-spacing: -0.01em;
+        margin: 0 0 0.4rem;
+      }
+      .lede { color: #aab6cf; max-width: 64ch; margin: 0 0 1.5rem; }
+      .lede strong { color: #e8eef9; }
+
+      .card {
+        display: grid;
+        gap: clamp(1.25rem, 3vw, 2.5rem);
+        align-items: center;
+        padding: clamp(1.25rem, 3vw, 2rem);
+        border-radius: 20px;
+        border: 1px solid rgba(180, 208, 255, 0.14);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+      }
+      .card.split { grid-template-columns: 1fr 1fr; }
+      @media (max-width: 760px) { .card.split { grid-template-columns: 1fr; } }
+
+      /* viewer grid — same look as the demos */
+      .scene {
+        position: relative;
+        width: 100%;
+        max-width: 420px;
+        aspect-ratio: 1;
+        margin: 0 auto;
+        perspective: var(--persp);
+        perspective-origin: 50% 50%;
+        border-radius: 18px;
+        border: 1px solid rgba(180, 208, 255, 0.18);
+        background:
+          radial-gradient(circle at 50% 45%, rgba(105, 165, 255, 0.14), rgba(0, 0, 0, 0) 36%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+      }
+      .scene.flat { perspective: none; }
+      .scene::before {
+        content: ""; position: absolute; inset: 0; pointer-events: none;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px) 50% 50% / 30px 30px,
+          linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px) 50% 50% / 30px 30px;
+        -webkit-mask-image: radial-gradient(circle at center, black 56%, transparent 88%);
+        mask-image: radial-gradient(circle at center, black 56%, transparent 88%);
+      }
+      .mesh {
+        position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+        transform-style: preserve-3d;
+      }
+      .triangle {
+        position: absolute; left: 0; top: 0;
+        width: 100px; height: 100px;
+        transform-origin: 0 0 0;
+      }
+      .triangle.boxed { outline: 1px dashed rgba(180, 208, 255, 0.6); outline-offset: -1px; }
+
+      /* corner letters for the matrix playground (colours match the matrix columns) */
+      .vlabel {
+        position: absolute; left: 0; top: 0;
+        width: 1.5rem; height: 1.5rem;
+        display: grid; place-items: center;
+        border-radius: 50%;
+        font: 700 0.82rem/1 ui-monospace, Menlo, monospace;
+        color: #0b1018;
+        pointer-events: none;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+      }
+      .vlabel.a { background: #9be38f; } /* matches column 4 — position of A */
+      .vlabel.b { background: #ff8fb3; } /* matches column 1 — edge A→B   */
+      .vlabel.c { background: #c4a0ff; } /* matches column 2 — edge A→C   */
+
+      /* controls */
+      .controls { display: grid; gap: 1rem; }
+      .control { display: grid; grid-template-columns: 5.5rem 1fr 3.2rem; align-items: center; gap: 0.75rem; }
+      .control label { font-size: 0.85rem; color: #aab6cf; }
+      .control output { font-family: ui-monospace, Menlo, monospace; font-size: 0.85rem; color: #7dd3fc; text-align: right; }
+      input[type="range"] { width: 100%; accent-color: #c084fc; }
+      .toggle { display: inline-flex; gap: 0.5rem; align-items: center; font-size: 0.9rem; color: #cdd9f4; cursor: pointer; }
+
+      .matrix {
+        margin-top: 1rem;
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 0.82rem;
+        border-radius: 12px;
+        border: 1px solid rgba(180, 208, 255, 0.14);
+        background: rgba(7, 12, 20, 0.66);
+        padding: 0.9rem 1rem;
+        overflow-x: auto;
+        white-space: pre;
+      }
+      .matrix .label { color: #6f7fa3; }
+      .col-x { color: #ff8fb3; } /* edge A→B */
+      .col-y { color: #c4a0ff; } /* edge A→C */
+      .col-n { color: #7dd3fc; } /* normal   */
+      .col-p { color: #9be38f; } /* position */
+
+      .legend { display: grid; gap: 0.35rem; margin-top: 0.9rem; font-size: 0.85rem; }
+      .legend span { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 3px; vertical-align: -1px; margin-right: 0.5rem; }
+      .sw-x { background: #ff8fb3; } .sw-y { background: #c4a0ff; }
+      .sw-n { background: #7dd3fc; } .sw-p { background: #9be38f; }
+
+      .takeaway {
+        margin-top: 1rem; padding: 0.8rem 1rem; border-left: 3px solid #c084fc;
+        background: rgba(192, 132, 252, 0.08); border-radius: 0 10px 10px 0; color: #d8e3f8;
+      }
+      footer { text-align: center; color: #6f7fa3; padding: 2rem 1rem 4rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>The maths, explained for humans</h1>
+      <p>
+        Four ideas turn a flat <code>&lt;div&gt;</code> into a face of a 3D
+        cube.
+      </p>
+    </header>
+
+    <main>
+      <!-- 1. THE GRADIENT TRICK -->
+      <section>
+        <h2>1. A div can't be a triangle — so we paint one</h2>
+
+        <div class="card split">
+          <div class="scene flat"><div class="mesh" id="m-grad"><div class="triangle boxed" id="grad-tri"></div></div></div>
+          <div class="controls">
+            <div class="control">
+              <label for="grad-split">split</label>
+              <input type="range" id="grad-split" min="20" max="80" value="50" />
+              <output id="grad-split-v">50%</output>
+            </div>
+            <label class="toggle"><input type="checkbox" id="grad-box" checked /> show the real square box</label>
+            <div class="matrix" id="grad-css"></div>
+            <p class="takeaway">
+              Why a gradient and not <code>clip-path</code>? Inside a 3D
+              context browsers don't reliably clip transformed children — but a
+              gradient is painted into the box <em>before</em> the 3D transform,
+              so it always survives.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. THE MATRIX -->
+      <section>
+        <h2>2. The matrix is just "where do the corners go?"</h2>
+
+        <div class="card split">
+          <div>
+            <div class="scene" id="scene-mtx"><div class="mesh" id="m-mtx"></div></div>
+          </div>
+          <div class="controls">
+            <div class="control"><label>B · x</label><input type="range" id="bx" min="-120" max="120" value="120" /><output id="bx-v"></output></div>
+            <div class="control"><label>B · y</label><input type="range" id="by" min="-120" max="120" value="0" /><output id="by-v"></output></div>
+            <div class="control"><label>B · z</label><input type="range" id="bz" min="-120" max="120" value="0" /><output id="bz-v"></output></div>
+            <div class="control"><label>C · x</label><input type="range" id="cx" min="-120" max="120" value="0" /><output id="cx-v"></output></div>
+            <div class="control"><label>C · y</label><input type="range" id="cy" min="-120" max="120" value="120" /><output id="cy-v"></output></div>
+            <div class="control"><label>C · z</label><input type="range" id="cz" min="-120" max="120" value="0" /><output id="cz-v"></output></div>
+            <div class="control"><label>orbit</label><input type="range" id="orbit" min="-80" max="80" value="22" /><output id="orbit-v"></output></div>
+
+            <div class="matrix" id="mtx-out"></div>
+            <div class="legend">
+              <div><span class="sw-x"></span>columns 1–2 — the two <strong>edges</strong> leaving corner A (B and C directions)</div>
+              <div><span class="sw-n"></span>column 3 — the <strong>normal</strong>, computed for free as edge1 × edge2 (which way the face points)</div>
+              <div><span class="sw-p"></span>column 4 — the <strong>position</strong> of corner A</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. PERSPECTIVE -->
+      <section>
+        <h2>3. Perspective is the camera lens</h2>
+
+        <div class="card split">
+          <div class="scene" id="scene-persp"><div class="mesh" id="m-persp"></div></div>
+          <div class="controls">
+            <div class="control"><label>spin Y</label><input type="range" id="p-rot" min="0" max="80" value="45" /><output id="p-rot-v"></output></div>
+            <div class="control"><label>perspective</label><input type="range" id="p-val" min="200" max="2000" value="600" /><output id="p-val-v"></output></div>
+            <label class="toggle"><input type="checkbox" id="p-off" /> turn perspective off</label>
+            <div class="matrix" id="persp-css"></div>
+            <p class="takeaway">
+              Same triangle, same rotation in all cases. The only thing changing
+              is the lens on the parent — yet it's the difference between a flat
+              shape and a plane standing in space.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. NORMALS / BACKFACE -->
+      <section>
+        <h2>4. The normal tells CSS which faces to hide</h2>
+
+        <div class="card split">
+          <div class="scene" id="scene-bf"><div class="mesh" id="m-bf"></div></div>
+          <div class="controls">
+            <label class="toggle"><input type="checkbox" id="bf-hide" checked /> backface-visibility: hidden</label>
+            <label class="toggle"><input type="checkbox" id="bf-spin" checked /> keep spinning</label>
+            <p class="takeaway">
+              With culling <em>on</em>, the cube looks solid and clean. Turn it
+              <em>off</em> and you'll catch translucent back faces showing
+              through — the normal is what makes the difference, and we got it
+              for free from the cross product in step&nbsp;2.
+            </p>
+            <p class="lede" style="margin:0">
+              Put it together — paint, place, project, cull — and a few hundred
+              divs become a teapot. <a href="ground-up.html">← back to the build-up</a>
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>Pure CSS + a sprinkle of JS for the sliders. View source — it's all <a href="https://github.com/ronvoluted/css-obj-triangle-demo">here</a>.</footer>
+
+    <script>
+      // ---------- shared 3D maths ----------
+      const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+      const cross = (a, b) => ({ x: a.y*b.z - a.z*b.y, y: a.z*b.x - a.x*b.z, z: a.x*b.y - a.y*b.x });
+      const len = (v) => Math.hypot(v.x, v.y, v.z);
+      const fmt = (n) => { const r = Math.abs(n) < 1e-10 ? 0 : Number(n.toFixed(2)); return (r >= 0 ? " " : "") + r.toFixed(2); };
+      const TRI_BASE = 100;
+
+      function matrixValues(a, b, c) {
+        const eX = sub(b, a), eY = sub(c, a);
+        const n = cross(eX, eY); const nl = len(n) || 1;
+        const un = { x: n.x/nl, y: n.y/nl, z: n.z/nl };
+        const s = 1 / TRI_BASE;
+        return {
+          colX: [eX.x*s, eX.y*s, eX.z*s, 0],
+          colY: [eY.x*s, eY.y*s, eY.z*s, 0],
+          colN: [un.x, un.y, un.z, 0],
+          colP: [a.x, a.y, a.z, 1],
+        };
+      }
+      function matrix3dString(a, b, c) {
+        const m = matrixValues(a, b, c);
+        const all = [...m.colX, ...m.colY, ...m.colN, ...m.colP];
+        return `matrix3d(${all.map((n) => Number(n.toFixed(4))).join(",")})`;
+      }
+      function applyTriangle(el, a, b, c, color) {
+        el.style.transform = matrix3dString(a, b, c);
+        if (color) el.style.background = `linear-gradient(to bottom right, ${color} 50%, transparent 50%)`;
+      }
+
+      // ---------- 1. gradient trick ----------
+      const gradTri = document.getElementById("grad-tri");
+      const gradSplit = document.getElementById("grad-split");
+      const gradSplitV = document.getElementById("grad-split-v");
+      const gradBox = document.getElementById("grad-box");
+      const gradCss = document.getElementById("grad-css");
+      function drawGrad() {
+        const p = gradSplit.value;
+        gradTri.style.background = `linear-gradient(to bottom right, #ec4899 ${p}%, transparent ${p}%)`;
+        gradTri.style.transform = "translate(-50px,-50px)";
+        gradTri.classList.toggle("boxed", gradBox.checked);
+        gradSplitV.textContent = p + "%";
+        gradCss.innerHTML = `background: linear-gradient(\n  <span class="col-x">to bottom right</span>,\n  hotpink <span class="col-n">${p}%</span>,\n  transparent <span class="col-n">${p}%</span>\n);`;
+      }
+      [gradSplit, gradBox].forEach((e) => e.addEventListener("input", drawGrad));
+      drawGrad();
+
+      // ---------- 2. matrix playground ----------
+      const mMtx = document.getElementById("m-mtx");
+      const triMtx = document.createElement("div");
+      triMtx.className = "triangle boxed";
+      mMtx.appendChild(triMtx);
+
+      // corner letters, placed at A/B/C and billboarded to stay upright
+      function makeLabel(letter, cls) {
+        const el = document.createElement("div");
+        el.className = "vlabel " + cls;
+        el.textContent = letter;
+        mMtx.appendChild(el);
+        return el;
+      }
+      const labA = makeLabel("A", "a");
+      const labB = makeLabel("B", "b");
+      const labC = makeLabel("C", "c");
+      function placeLabel(el, p, orbit) {
+        // translate to the vertex, then undo the mesh's rotation so text faces us, then centre
+        el.style.transform =
+          `translate3d(${p.x}px, ${p.y}px, ${p.z}px) rotateY(${-orbit}deg) rotateX(12deg) translate(-50%, -50%)`;
+      }
+      const mtxIds = ["bx","by","bz","cx","cy","cz","orbit"];
+      const mtxEls = Object.fromEntries(mtxIds.map((id) => [id, document.getElementById(id)]));
+      const mtxOut = document.getElementById("mtx-out");
+
+      function rowHtml(i, m) {
+        const c = (v, cls) => `<span class="${cls}">${fmt(v)}</span>`;
+        return c(m.colX[i], "col-x") + "  " + c(m.colY[i], "col-y") + "  " + c(m.colN[i], "col-n") + "  " + c(m.colP[i], "col-p");
+      }
+      function drawMtx() {
+        const A = { x: 0, y: 0, z: 0 };
+        const B = { x: +mtxEls.bx.value, y: +mtxEls.by.value, z: +mtxEls.bz.value };
+        const C = { x: +mtxEls.cx.value, y: +mtxEls.cy.value, z: +mtxEls.cz.value };
+        applyTriangle(triMtx, A, B, C, "#d946ef");
+        const orbit = +mtxEls.orbit.value;
+        mMtx.style.transform = `rotateX(-12deg) rotateY(${orbit}deg)`;
+        placeLabel(labA, A, orbit);
+        placeLabel(labB, B, orbit);
+        placeLabel(labC, C, orbit);
+        for (const id of mtxIds) document.getElementById(id + "-v").textContent = mtxEls[id].value;
+
+        const m = matrixValues(A, B, C);
+        mtxOut.innerHTML =
+          `<span class="label">     edge→B   edge→C   normal  posA</span>\n` +
+          rowHtml(0, m) + "\n" + rowHtml(1, m) + "\n" + rowHtml(2, m) + "\n" + rowHtml(3, m);
+      }
+      mtxIds.forEach((id) => mtxEls[id].addEventListener("input", drawMtx));
+      drawMtx();
+
+      // ---------- 3. perspective ----------
+      const mPersp = document.getElementById("m-persp");
+      const scenePersp = document.getElementById("scene-persp");
+      // build a 2-triangle square face
+      const H = 70;
+      const FBL={x:-H,y:-H,z:H}, FBR={x:H,y:-H,z:H}, FTR={x:H,y:H,z:H}, FTL={x:-H,y:H,z:H};
+      const t1 = document.createElement("div"); t1.className = "triangle";
+      const t2 = document.createElement("div"); t2.className = "triangle";
+      applyTriangle(t1, FBL, FBR, FTL, "#c084fc");
+      applyTriangle(t2, FTR, FTL, FBR, "#7dd3fc");
+      mPersp.append(t1, t2);
+      const pRot = document.getElementById("p-rot"), pVal = document.getElementById("p-val"), pOff = document.getElementById("p-off");
+      const perspCss = document.getElementById("persp-css");
+      function drawPersp() {
+        mPersp.style.transform = `rotateX(-10deg) rotateY(${pRot.value}deg)`;
+        scenePersp.classList.toggle("flat", pOff.checked);
+        if (!pOff.checked) scenePersp.style.perspective = pVal.value + "px";
+        document.getElementById("p-rot-v").textContent = pRot.value + "°";
+        document.getElementById("p-val-v").textContent = pVal.value;
+        perspCss.innerHTML = pOff.checked
+          ? `.scene { <span class="col-n">perspective: none</span>; }\n.face { transform: rotateY(${pRot.value}deg); }`
+          : `.scene { <span class="col-n">perspective: ${pVal.value}px</span>; }\n.face { transform: rotateY(${pRot.value}deg); }`;
+      }
+      [pRot, pVal, pOff].forEach((e) => e.addEventListener("input", drawPersp));
+      drawPersp();
+
+      // ---------- 4. normals / backface ----------
+      const mBf = document.getElementById("m-bf");
+      const B2 = 70;
+      const v = {
+        FBL:{x:-B2,y:-B2,z:B2}, FBR:{x:B2,y:-B2,z:B2}, FTR:{x:B2,y:B2,z:B2}, FTL:{x:-B2,y:B2,z:B2},
+        BBL:{x:-B2,y:-B2,z:-B2}, BBR:{x:B2,y:-B2,z:-B2}, BTR:{x:B2,y:B2,z:-B2}, BTL:{x:-B2,y:B2,z:-B2},
+      };
+      function quad(p0,p1,p2,p3,c1,c2){ return [[p0,p1,p3,c1],[p2,p3,p1,c2]]; }
+      const bfFaces = [
+        ...quad(v.FBL,v.FBR,v.FTR,v.FTL,"#ec4899","#d946ef"),
+        ...quad(v.FBR,v.BBR,v.BTR,v.FTR,"#a855f7","#8b5cf6"),
+        ...quad(v.BBR,v.BBL,v.BTL,v.BTR,"#f472b6","#e879f9"),
+        ...quad(v.BBL,v.FBL,v.FTL,v.BTL,"#3b82f6","#6366f1"),
+        ...quad(v.FTL,v.FTR,v.BTR,v.BTL,"#22d3ee","#10b981"),
+        ...quad(v.BBL,v.BBR,v.FBR,v.FBL,"#0ea5e9","#14b8a6"),
+      ];
+      const bfTris = bfFaces.map(([a,b,c,col]) => { const el = document.createElement("div"); el.className = "triangle"; applyTriangle(el,a,b,c,col); mBf.appendChild(el); return el; });
+      const bfHide = document.getElementById("bf-hide"), bfSpin = document.getElementById("bf-spin");
+      function applyBfMode(){
+        const mode = bfHide.checked ? "hidden" : "visible";
+        for (const el of bfTris) { el.style.backfaceVisibility = mode; el.style.opacity = bfHide.checked ? "1" : "0.7"; }
+      }
+      bfHide.addEventListener("change", applyBfMode);
+      applyBfMode();
+
+      let bfAngle = 32, last = null, raf = null;
+      function tick(now){
+        if (last == null) last = now;
+        const dt = (now - last) / 1000; last = now;
+        if (bfSpin.checked) { bfAngle += dt * 26; }
+        mBf.style.transform = `rotateX(-20deg) rotateY(${bfAngle}deg)`;
+        raf = requestAnimationFrame(tick);
+      }
+      raf = requestAnimationFrame(tick);
+    </script>
+  </body>
+</html>
